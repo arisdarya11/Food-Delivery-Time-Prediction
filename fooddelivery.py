@@ -35,7 +35,7 @@ st.divider()
 # =========================
 model = joblib.load("model_delivery.pkl")
 scaler = joblib.load("scaler.pkl")
-encoder = joblib.load("encoder.pkl")
+encoder = joblib.load("onehot_encoder.pkl")  # 🔧 FIX DI SINI
 
 # =========================
 # USER INPUT
