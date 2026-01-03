@@ -35,7 +35,8 @@ st.divider()
 # =========================
 model = joblib.load("model_delivery.pkl")
 scaler = joblib.load("scaler.pkl")
-encoder = joblib.load("onehot_encoder.pkl")  # 🔧 FIX DI SINI
+encoder = joblib.load("onehot_encoder.pkl")
+feature_names = joblib.load("feature_names.pkl")
 
 # =========================
 # USER INPUT
@@ -67,18 +68,31 @@ input_df = pd.DataFrame([{
 # =========================
 # PREPROCESSING
 # =========================
+# Numerical
 num_cols = ["Distance_km", "Preparation_Time_min", "Courier_Experience_yrs"]
 num_scaled = scaler.transform(input_df[num_cols])
 num_df = pd.DataFrame(num_scaled, columns=num_cols)
 
+# Categorical
 cat_cols = ["Weather", "Traffic_Level", "Time_of_Day", "Vehicle_Type"]
 cat_encoded = encoder.transform(input_df[cat_cols])
+
+# Aman untuk sparse / dense
+if hasattr(cat_encoded, "toarray"):
+    cat_encoded = cat_encoded.toarray()
+
 cat_df = pd.DataFrame(
-    cat_encoded.toarray(),
-    columns=encoder.get_feature_names_out()
+    cat_encoded,
+    columns=encoder.get_feature_names_out(cat_cols)
 )
 
+# Gabungkan
 final_input = pd.concat([num_df, cat_df], axis=1)
+
+# =========================
+# ALIGN FEATURE NAMES (INI KUNCI!)
+# =========================
+final_input = final_input.reindex(columns=feature_names, fill_value=0)
 
 # =========================
 # PREDICTION
