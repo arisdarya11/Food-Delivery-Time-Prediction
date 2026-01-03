@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 import joblib
 from PIL import Image
+import os
 
 # =========================
 # PAGE CONFIG
@@ -15,8 +15,15 @@ st.set_page_config(
 # =========================
 # LOAD IMAGE
 # =========================
-image = Image.open("dataset-cover.jpg")
-st.image(image, use_container_width=True)
+image_path = None
+for ext in ["jpg", "png"]:
+    if os.path.exists(f"dataset-cover.{ext}"):
+        image_path = f"dataset-cover.{ext}"
+        break
+
+if image_path:
+    image = Image.open(image_path)
+    st.image(image, use_container_width=True)
 
 # =========================
 # TITLE & DESCRIPTION
@@ -24,8 +31,8 @@ st.image(image, use_container_width=True)
 st.title("🍔 Food Delivery Time Prediction")
 st.write(
     "Aplikasi ini digunakan untuk memprediksi waktu pengantaran makanan "
-    "berdasarkan jarak, kondisi cuaca, lalu lintas, waktu pengantaran, "
-    "jenis kendaraan, dan pengalaman kurir."
+    "berdasarkan jarak, waktu persiapan, pengalaman kurir, kondisi cuaca, "
+    "lalu lintas, waktu pengantaran, dan jenis kendaraan."
 )
 
 st.divider()
@@ -33,19 +40,24 @@ st.divider()
 # =========================
 # LOAD MODEL & PREPROCESSOR
 # =========================
-model = joblib.load("model_delivery.pkl")
-scaler = joblib.load("scaler.pkl")
-encoder = joblib.load("onehot_encoder.pkl")
-feature_names = joblib.load("feature_names.pkl")
+@st.cache_resource
+def load_artifacts():
+    model = joblib.load("model_delivery.pkl")
+    scaler = joblib.load("scaler.pkl")
+    encoder = joblib.load("onehot_encoder.pkl")
+    feature_names = joblib.load("feature_names.pkl")
+    return model, scaler, encoder, feature_names
+
+model, scaler, encoder, feature_names = load_artifacts()
 
 # =========================
 # USER INPUT
 # =========================
 st.subheader("📥 Input Order Details")
 
-distance = st.number_input("Distance (km)", min_value=0.1, max_value=50.0, value=5.0)
-prep_time = st.number_input("Preparation Time (minutes)", min_value=1, max_value=120, value=20)
-experience = st.number_input("Courier Experience (years)", min_value=0.0, max_value=20.0, value=2.0)
+distance = st.number_input("Distance (km)", 0.1, 50.0, 5.0)
+prep_time = st.number_input("Preparation Time (minutes)", 1, 120, 20)
+experience = st.number_input("Courier Experience (years)", 0.0, 20.0, 2.0)
 
 weather = st.selectbox("Weather", ["Clear", "Rainy", "Foggy", "Snowy", "Windy"])
 traffic = st.selectbox("Traffic Level", ["Low", "Medium", "High"])
@@ -77,7 +89,6 @@ num_df = pd.DataFrame(num_scaled, columns=num_cols)
 cat_cols = ["Weather", "Traffic_Level", "Time_of_Day", "Vehicle_Type"]
 cat_encoded = encoder.transform(input_df[cat_cols])
 
-# Aman untuk sparse / dense
 if hasattr(cat_encoded, "toarray"):
     cat_encoded = cat_encoded.toarray()
 
@@ -89,19 +100,18 @@ cat_df = pd.DataFrame(
 # Gabungkan
 final_input = pd.concat([num_df, cat_df], axis=1)
 
-# =========================
-# ALIGN FEATURE NAMES (INI KUNCI!)
-# =========================
+# Samakan urutan fitur dengan model
 final_input = final_input.reindex(columns=feature_names, fill_value=0)
 
 # =========================
-# PREDICTION
+# ✅ PREDICTION (FIX UTAMA DI SINI)
 # =========================
 if st.button("🔮 Predict Delivery Time"):
-    prediction = model.predict(final_input)[0]
+    # UBAH KE NUMPY ARRAY AGAR TIDAK ERROR FEATURE NAMES
+    prediction = model.predict(final_input.values)[0]
 
     st.success(f"⏱ Estimated Delivery Time: **{prediction:.1f} minutes**")
-    st.info(f"📦 ETA Range: **{prediction-5:.0f} – {prediction+5:.0f} minutes**")
+    st.info(f"📦 ETA Range: **{prediction - 5:.0f} – {prediction + 5:.0f} minutes**")
 
 # =========================
 # FOOTER
