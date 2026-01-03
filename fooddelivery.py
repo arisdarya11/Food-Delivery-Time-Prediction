@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np
 import joblib
 from PIL import Image
 import os
@@ -15,24 +16,20 @@ st.set_page_config(
 # =========================
 # LOAD IMAGE
 # =========================
-image_path = None
 for ext in ["jpg", "png"]:
     if os.path.exists(f"dataset-cover.{ext}"):
-        image_path = f"dataset-cover.{ext}"
+        image = Image.open(f"dataset-cover.{ext}")
+        st.image(image, use_container_width=True)
         break
 
-if image_path:
-    image = Image.open(image_path)
-    st.image(image, use_container_width=True)
-
 # =========================
-# TITLE & DESCRIPTION
+# TITLE
 # =========================
 st.title("🍔 Food Delivery Time Prediction")
 st.write(
-    "Aplikasi ini digunakan untuk memprediksi waktu pengantaran makanan "
-    "berdasarkan jarak, waktu persiapan, pengalaman kurir, kondisi cuaca, "
-    "lalu lintas, waktu pengantaran, dan jenis kendaraan."
+    "Aplikasi ini memprediksi estimasi waktu pengantaran makanan "
+    "berdasarkan jarak, waktu persiapan, pengalaman kurir, "
+    "kondisi cuaca, lalu lintas, waktu pengantaran, dan jenis kendaraan."
 )
 
 st.divider()
@@ -45,10 +42,9 @@ def load_artifacts():
     model = joblib.load("model_delivery.pkl")
     scaler = joblib.load("scaler.pkl")
     encoder = joblib.load("onehot_encoder.pkl")
-    feature_names = joblib.load("feature_names.pkl")
-    return model, scaler, encoder, feature_names
+    return model, scaler, encoder
 
-model, scaler, encoder, feature_names = load_artifacts()
+model, scaler, encoder = load_artifacts()
 
 # =========================
 # USER INPUT
@@ -65,7 +61,7 @@ time_day = st.selectbox("Time of Day", ["Morning", "Afternoon", "Evening", "Nigh
 vehicle = st.selectbox("Vehicle Type", ["Scooter", "Car"])
 
 # =========================
-# DATAFRAME INPUT
+# BUILD INPUT DATA
 # =========================
 input_df = pd.DataFrame([{
     "Distance_km": distance,
@@ -78,37 +74,51 @@ input_df = pd.DataFrame([{
 }])
 
 # =========================
-# PREPROCESSING
+# PREPROCESSING (SAMA DENGAN TRAINING)
 # =========================
-# Numerical
-num_cols = ["Distance_km", "Preparation_Time_min", "Courier_Experience_yrs"]
+num_cols = [
+    "Distance_km",
+    "Preparation_Time_min",
+    "Courier_Experience_yrs"
+]
+
+cat_cols = [
+    "Weather",
+    "Traffic_Level",
+    "Time_of_Day",
+    "Vehicle_Type"
+]
+
+# Scale numerik
 num_scaled = scaler.transform(input_df[num_cols])
-num_df = pd.DataFrame(num_scaled, columns=num_cols)
 
-# Categorical
-cat_cols = ["Weather", "Traffic_Level", "Time_of_Day", "Vehicle_Type"]
+# Encode kategorikal
 cat_encoded = encoder.transform(input_df[cat_cols])
-
 if hasattr(cat_encoded, "toarray"):
     cat_encoded = cat_encoded.toarray()
 
-cat_df = pd.DataFrame(
-    cat_encoded,
-    columns=encoder.get_feature_names_out(cat_cols)
-)
-
-# Gabungkan
-final_input = pd.concat([num_df, cat_df], axis=1)
-
-# Samakan urutan fitur dengan model
-final_input = final_input.reindex(columns=feature_names, fill_value=0)
+# Gabungkan → numpy array
+X_input = np.hstack([num_scaled, cat_encoded])
 
 # =========================
-# ✅ PREDICTION (FIX UTAMA DI SINI)
+# 🔥 SAMAKAN JUMLAH FITUR (PALING PENTING)
+# =========================
+expected_features = model.n_features_in_
+current_features = X_input.shape[1]
+
+if current_features < expected_features:
+    X_input = np.hstack([
+        X_input,
+        np.zeros((1, expected_features - current_features))
+    ])
+elif current_features > expected_features:
+    X_input = X_input[:, :expected_features]
+
+# =========================
+# PREDICTION
 # =========================
 if st.button("🔮 Predict Delivery Time"):
-    # UBAH KE NUMPY ARRAY AGAR TIDAK ERROR FEATURE NAMES
-    prediction = model.predict(final_input.values)[0]
+    prediction = model.predict(X_input)[0]
 
     st.success(f"⏱ Estimated Delivery Time: **{prediction:.1f} minutes**")
     st.info(f"📦 ETA Range: **{prediction - 5:.0f} – {prediction + 5:.0f} minutes**")
@@ -116,4 +126,4 @@ if st.button("🔮 Predict Delivery Time"):
 # =========================
 # FOOTER
 # =========================
-st.caption("Model: Linear Regression | Use case: Food Delivery ETA Prediction")
+st.caption("Model: Linear Regression | Food Delivery ETA Prediction")
